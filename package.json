@@ -1,0 +1,12 @@
+{
+  "name": "glaze-analysis",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mcp:server": "node mcp/glaze-tools-server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
+}

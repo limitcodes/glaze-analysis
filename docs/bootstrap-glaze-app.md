@@ -8,6 +8,8 @@ This repo now includes `scripts/bootstrap-glaze-app.sh` to reproduce Glaze's app
 - creates a `.glaze-sources/` workspace
 - links shared `.claude/agents`, `.claude/skills`, and `.claude/rules` into the app workspace
 - copies `.claude/settings.json`, `CLAUDE.md`, and `GLAZE-APP-GUIDE.md` into the app workspace
+- links a repo-local `glaze-mcp` directory into the generated app
+- writes `.mcp.json` so Claude can discover the local `Glaze` MCP server automatically
 - patches `glaze.ts` to resolve the SDK from `~/Library/Application Support/app.glaze.macos.main/sdk/current`
 - creates a sibling `glaze-core` symlink to the installed SDK
 - updates `package.json` metadata
@@ -39,6 +41,13 @@ Glaze ships its own Node runtime. Put it on `PATH` before running scripts:
 
 ```bash
 export PATH="$HOME/Library/Application Support/app.glaze.macos.main/node/runtime/node-v24.14.1-darwin-arm64/bin:$PATH"
+```
+
+Before using the MCP server from a generated app, install the repo-level MCP dependencies once:
+
+```bash
+export PATH="$HOME/Library/Application Support/app.glaze.macos.main/node/runtime/node-v24.14.1-darwin-arm64/bin:$PATH"
+npm install
 ```
 
 Then inside the generated `.glaze-sources/` directory:
@@ -78,7 +87,7 @@ Relevant Claude Code docs:
 
 ## Remaining Gap
 
-After this bootstrap work, the main missing piece for true Glaze-app parity is the MCP/runtime tool layer.
+After this bootstrap work, the main missing piece for full Glaze parity is the host-only part of the MCP/runtime tool layer.
 
 What already works:
 
@@ -87,7 +96,18 @@ What already works:
 - multi-app bootstrapping
 - Glaze SDK CLI access
 - local build/lint/type-check workflow
+- local `Glaze` MCP server discovery from generated apps
+
+What the current repo-local MCP server already implements:
+
+- `AppStatus`
+- `BuildApp`
+- `LaunchApp` when an adjacent `.app` bundle already exists
+- `GlazeTodoWrite`
+- `ReportMigrationOutcome`
 
 What is still not replicated:
 
-- Glaze host MCP tools such as build-status orchestration, app launching, live inspection, screenshots, and Glaze conversation-history recall
+- bundle repackaging and bundle metadata mutation
+- live inspection, DOM snapshots, runtime evaluation, and screenshots
+- Glaze conversation-history recall from the desktop app database

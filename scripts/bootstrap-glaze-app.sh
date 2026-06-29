@@ -47,6 +47,7 @@ DEST_DIR="$TARGET_DIR/$APP_ID"
 SRC_DIR="$DEST_DIR/.glaze-sources"
 GLAZE_CORE_LINK="$DEST_DIR/glaze-core"
 APP_CLAUDE_DIR="$SRC_DIR/.claude"
+GLAZE_MCP_LINK="$DEST_DIR/glaze-mcp"
 
 if [[ -e "$DEST_DIR" ]]; then
   echo "Target already exists: $DEST_DIR" >&2
@@ -56,6 +57,7 @@ fi
 mkdir -p "$DEST_DIR"
 cp -R "$TEMPLATE_DIR" "$SRC_DIR"
 ln -s "$SDK_CURRENT_DIR/@glaze/core" "$GLAZE_CORE_LINK"
+ln -s "$REPO_ROOT/mcp" "$GLAZE_MCP_LINK"
 mkdir -p "$APP_CLAUDE_DIR"
 ln -s "$REPO_ROOT/.claude/agents" "$APP_CLAUDE_DIR/agents"
 ln -s "$REPO_ROOT/.claude/skills" "$APP_CLAUDE_DIR/skills"
@@ -63,6 +65,16 @@ ln -s "$REPO_ROOT/.claude/rules" "$APP_CLAUDE_DIR/rules"
 cp "$REPO_ROOT/.claude/settings.json" "$APP_CLAUDE_DIR/settings.json"
 cp "$REPO_ROOT/CLAUDE.md" "$SRC_DIR/CLAUDE.md"
 cp "$REPO_ROOT/GLAZE-APP-GUIDE.md" "$SRC_DIR/GLAZE-APP-GUIDE.md"
+cat >"$SRC_DIR/.mcp.json" <<EOF
+{
+  "mcpServers": {
+    "Glaze": {
+      "command": "${HOME}/Library/Application Support/app.glaze.macos.main/node/runtime/node-v24.14.1-darwin-arm64/bin/node",
+      "args": ["../glaze-mcp/glaze-tools-server.mjs"]
+    }
+  }
+}
+EOF
 
 cat >"$SRC_DIR/glaze.ts" <<'EOF'
 #!/usr/bin/env node
@@ -129,6 +141,7 @@ cat >"$SRC_DIR/.glaze_memory/PROJECT-CONTEXT.md" <<EOF
 - Key files:
   - \`glaze.ts\` CLI wrapper that resolves the Glaze SDK from Application Support
   - \`../glaze-core\` symlink to the installed Glaze SDK
+  - \`../glaze-mcp\` symlink to the repo-local MCP server implementation
   - \`package.json\` template app metadata and scripts
   - \`.claude/\` app-local Claude config linked to the shared repo resources
 - Components:
@@ -145,8 +158,8 @@ cat >"$SRC_DIR/.glaze_memory/PROJECT-CONTEXT.md" <<EOF
 ## History
 ### $(date +%F) - Initial bootstrap
 - Goal: Create a Glaze app workspace outside the Glaze desktop app
-- What was done: Copied the template app, patched \`glaze.ts\`, and updated package metadata
-- Key decisions: Resolve the SDK from Application Support and copy/link Claude config so the workspace can be opened directly
+- What was done: Copied the template app, patched \`glaze.ts\`, linked the shared Claude/MCP resources, and updated package metadata
+- Key decisions: Resolve the SDK from Application Support and link Claude/MCP config so the workspace can be opened directly
 - UI elements: template
 - Backend elements: template
 - Corrections/Lessons Learned: None
