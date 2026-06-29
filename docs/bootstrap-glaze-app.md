@@ -102,12 +102,42 @@ What the current repo-local MCP server already implements:
 
 - `AppStatus`
 - `BuildApp`
-- `LaunchApp` when an adjacent `.app` bundle already exists
+- `LaunchApp`
+- `UpdateBundle`
+- `RepackageBundle`
 - `GlazeTodoWrite`
 - `ReportMigrationOutcome`
 
+## Sample App Lifecycle
+
+For a normal repo-local Glaze app flow:
+
+```bash
+./scripts/bootstrap-glaze-app.sh "My Glaze App"
+cd apps/<app-id>/.glaze-sources
+claude --agent main-orchestrator
+```
+
+Then the lifecycle is:
+
+1. `npm install --include=dev`
+2. `BuildApp`
+3. `RepackageBundle`
+4. `LaunchApp`
+
+If you later change bundle-facing metadata in `package.json`, such as:
+
+- `appConfig.fileAssociations`
+- `appConfig.macOS.activationPolicy`
+- app display name / bundle-facing metadata
+
+then run:
+
+1. `BuildApp`
+2. `UpdateBundle`
+3. `LaunchApp`
+
 What is still not replicated:
 
-- bundle repackaging and bundle metadata mutation
 - live inspection, DOM snapshots, runtime evaluation, and screenshots
 - Glaze conversation-history recall from the desktop app database
