@@ -66,7 +66,7 @@ function run(command, args, options = {}) {
         ...process.env,
         PATH: `${nodeBinDir}:${process.env.PATH ?? ""}`
       },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"]
     });
 
     let stdout = "";
@@ -78,6 +78,12 @@ function run(command, args, options = {}) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
+    if (options.input) {
+      child.stdin.write(options.input);
+      child.stdin.end();
+    } else {
+      child.stdin.end();
+    }
     child.on("close", (code) => {
       resolve({ code: code ?? 1, stdout, stderr });
     });
@@ -154,6 +160,44 @@ async function isAppRunning() {
   return result.code === 0;
 }
 
+async function listAppWindows() {
+  const pkg = await getPackageJson();
+  const ownerName = resolveDisplayName(pkg);
+  const script = `
+import CoreGraphics
+import Foundation
+
+let ownerName = CommandLine.arguments[1]
+let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+var result: [[String: Any]] = []
+
+for window in windowList {
+  guard let owner = window[kCGWindowOwnerName as String] as? String, owner == ownerName else { continue }
+  let number = window[kCGWindowNumber as String] as? Int ?? 0
+  let name = window[kCGWindowName as String] as? String ?? ""
+  let bounds = window[kCGWindowBounds as String] as? [String: Any] ?? [:]
+  result.append([
+    "windowId": String(number),
+    "title": name,
+    "bounds": [
+      "x": bounds["X"] as? Double ?? 0,
+      "y": bounds["Y"] as? Double ?? 0,
+      "width": bounds["Width"] as? Double ?? 0,
+      "height": bounds["Height"] as? Double ?? 0
+    ]
+  ])
+}
+
+let data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted])
+print(String(data: data, encoding: .utf8)!)
+`;
+  const result = await run("swift", ["-", ownerName], { cwd: appRoot, input: script });
+  if (result.code !== 0) {
+    throw new Error(result.stderr || result.stdout || "Failed to enumerate app windows");
+  }
+  return JSON.parse(result.stdout || "[]");
+}
+
 async function killAppIfRunning(bundlePath) {
   const appName = path.basename(bundlePath, ".app");
   const result = await run("pkill", ["-x", appName], { cwd: appRoot });
@@ -167,6 +211,7 @@ async function buildStatus() {
   const hasRuntimeManifest = await exists(path.join(appRoot, ".glaze", "package.json"));
   const bundlePath = await findAppBundle();
   const running = bundlePath ? await isAppRunning() : false;
+  const windows = running ? await listAppWindows().catch(() => []) : [];
 
   return {
     appName: pkg.productName,
@@ -176,10 +221,81 @@ async function buildStatus() {
     hasRuntimeManifest,
     bundlePath,
     running,
+    windows,
     inspection: {
-      availability: "sessionUnavailable",
-      reason: "Live app inspection tools are not implemented in this repo-local MCP server yet."
+      availability: running ? "limited" : "notRunning",
+      reason: running
+        ? "Window discovery is available, but DOM-level Glaze host inspection is not implemented here."
+        : "The app is not running."
     }
+  };
+}
+
+export async function getInspectionStatus() {
+  const status = await buildStatus();
+  return {
+    availability: status.running ? "limited" : status.hasBuild ? "notRunning" : "notBuilt",
+    bundlePath: status.bundlePath,
+    windows: status.windows,
+    reason: status.running
+      ? "Window discovery is available. DOM-level inspection is still unavailable without Glaze host runtime hooks."
+      : status.hasBuild
+        ? "Build artifacts exist, but the packaged app is not running."
+        : "No build artifacts found yet."
+  };
+}
+
+export async function capturePreview({ windowId, rect } = {}) {
+  const status = await buildStatus();
+  if (!status.running) {
+    return {
+      ok: false,
+      reason: "The app is not running."
+    };
+  }
+
+  const windows = status.windows ?? [];
+  const targetWindow =
+    (windowId ? windows.find((window) => window.windowId === windowId) : windows[0]) ?? null;
+  if (!targetWindow) {
+    return {
+      ok: false,
+      reason: "No matching app window was found."
+    };
+  }
+
+  const captureRect = rect ?? targetWindow.bounds;
+  const outputPath = path.join(
+    "/tmp",
+    `glaze-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
+  );
+  const result = await run(
+    "screencapture",
+    [
+      "-x",
+      "-R",
+      `${Math.round(captureRect.x)},${Math.round(captureRect.y)},${Math.round(captureRect.width)},${Math.round(captureRect.height)}`,
+      outputPath
+    ],
+    { cwd: appRoot }
+  );
+
+  if (result.code !== 0) {
+    await fs.rm(outputPath, { force: true }).catch(() => {});
+    return {
+      ok: false,
+      reason:
+        "Screen capture failed. On macOS this usually means the terminal or Claude host lacks Screen Recording permission.",
+      stderr: result.stderr,
+      stdout: result.stdout,
+      window: targetWindow
+    };
+  }
+
+  return {
+    ok: true,
+    path: outputPath,
+    window: targetWindow
   };
 }
 
@@ -591,14 +707,12 @@ server.registerTool(
 server.registerTool(
   "LiveAppInspectionStatus",
   {
-    description: "Report that live inspection is not yet wired in the repo-local MCP server.",
+    description: "Report runtime window readiness for repo-local Glaze apps.",
     inputSchema: {}
   },
-  async () =>
-    makeText({
-      availability: "sessionUnavailable",
-      reason: "Live inspection is not implemented in this repo-local MCP server yet."
-    })
+  async () => {
+    return makeText(await getInspectionStatus());
+  }
 );
 
 server.registerTool(
@@ -655,7 +769,7 @@ server.registerTool(
 server.registerTool(
   "LiveAppCapturePreview",
   {
-    description: "Placeholder for runtime screenshots.",
+    description: "Capture a preview image of the running Glaze app window when macOS screen capture permissions allow it.",
     inputSchema: {
       windowId: z.string().optional(),
       rect: z
@@ -668,11 +782,7 @@ server.registerTool(
         .optional()
     }
   },
-  async () =>
-    unavailableTool(
-      "LiveAppCapturePreview",
-      "Live screenshots require Glaze host runtime inspection, which is not wired yet."
-    )
+  async (args) => makeText(await capturePreview(args))
 );
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

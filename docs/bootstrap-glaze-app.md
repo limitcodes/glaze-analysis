@@ -105,6 +105,8 @@ What the current repo-local MCP server already implements:
 - `LaunchApp`
 - `UpdateBundle`
 - `RepackageBundle`
+- `LiveAppInspectionStatus` with running-window discovery
+- `LiveAppCapturePreview` attempt with explicit macOS Screen Recording failure reporting
 - `GlazeTodoWrite`
 - `ReportMigrationOutcome`
 
@@ -139,5 +141,6 @@ then run:
 
 What is still not replicated:
 
-- live inspection, DOM snapshots, runtime evaluation, and screenshots
+- DOM snapshots, element inspection, and runtime evaluation
+- reliable screenshots without granting Screen Recording permission to the Claude/terminal host
 - Glaze conversation-history recall from the desktop app database
